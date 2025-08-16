@@ -1,11 +1,9 @@
 package guru.springframework.springaifunctions.services;
 
 
+import guru.springframework.springaifunctions.functions.StockPriceFunction;
 import guru.springframework.springaifunctions.functions.WeatherServiceFunction;
-import guru.springframework.springaifunctions.model.Answer;
-import guru.springframework.springaifunctions.model.Question;
-import guru.springframework.springaifunctions.model.WeatherRequest;
-import guru.springframework.springaifunctions.model.WeatherResponse;
+import guru.springframework.springaifunctions.model.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
@@ -54,6 +52,31 @@ public class OpenAIServiceImpl implements OpenAIService {
                 " which gives you the information based on the metrics system. When answering the weather in an imperial system" +
                 " country, you should convert the temperature to Fahrenheit and the wind speed to miles per hour. " )
                 .createMessage();
+
+        var response = openAiChatModel.call(new Prompt(List.of(userMessage, systemMessage), promptOptions));
+
+        return new Answer(response.getResult().getOutput().getContent());
+    }
+
+    @Override
+    public Answer getStockPrice(Question question) {
+        var promptOptions = OpenAiChatOptions.builder()
+                .functionCallbacks(List.of(FunctionCallback.builder()
+                        .function("CurrentStockPrice", new StockPriceFunction(apiNinjasKey))
+                        .description("Get the current stock for a ticker symbol")
+                        .responseConverter(response -> {
+                            String schema = ModelOptionsUtils.getJsonSchema(StockPriceResponse.class, false);
+                            String json = ModelOptionsUtils.toJsonString(response);
+                            return schema + "\n" + json;
+                        })
+                        .inputType(StockPriceRequest.class)
+                        .build()))
+                .build();
+
+        Message systemMessage = new PromptTemplate("You are an agent who returns the stock price for a given stock symbol (or a ticker)" )
+                .createMessage();
+
+        Message userMessage = new PromptTemplate(question.question()).createMessage();
 
         var response = openAiChatModel.call(new Prompt(List.of(userMessage, systemMessage), promptOptions));
 
